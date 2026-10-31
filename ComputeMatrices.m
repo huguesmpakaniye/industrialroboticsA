@@ -6,9 +6,9 @@ L1 = L_dim(1); L3 = L_dim(2); L4 = L_dim(3);
 
 % --- 1. LOCAL OPERATOR MATRICES (L) ---
 L1_loc = [0 -1 0 0; 1 0 0 0; 0 0 0 0; 0 0 0 0]; % Revolute Z
-L2_loc = [0 0 0 1; 0 0 0 0; 0 0 0 0; 0 0 0 0];  % Prismatic X
-L3_loc = [0 0 1 0; 0 0 0 0; -1 0 0 0; 0 0 0 0]; % Revolute Y
-L4_loc = [0 0 1 0; 0 0 0 0; -1 0 0 0; 0 0 0 0]; % Revolute Y
+L2_loc = [0 0 0 cos(alpha); 0 0 0 0; 0 0 0 sin(alpha); 0 0 0 0];  % Prismatic X
+L3_loc = [0 0 -1 0; 0 0 0 0; 1 0 0 0; 0 0 0 0]; % Revolute Y
+L4_loc = [0 0 -1 0; 0 0 0 0; 1 0 0 0; 0 0 0 0]; % Revolute Y
 
 % --- 2. RELATIVE POSE MATRICES (M) ---
 M01 = [cos(q1) -sin(q1) 0 0; sin(q1) cos(q1) 0 0; 0 0 1 L1; 0 0 0 1];

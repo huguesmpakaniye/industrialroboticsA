@@ -23,13 +23,13 @@ Jp(1,2) = -cos(alpha) * sin(q1) * q1p;
 term1_3 = -L3 * cos(alpha + q3) * q3p - L4 * cos(phi) * phip;
 base1_3 = -L3 * sin(alpha + q3) - L4 * sin(phi);
 Jp(1,3) = term1_3 * cos(q1) - base1_3 * sin(q1) * q1p;
-Jp(1,4) = -L4 * cos(phi) * phip * cos(q1) - L4 * sin(phi) * sin(q1) * q1p;
+Jp(1,4) = -L4 * cos(phi) * phip * cos(q1) + L4 * sin(phi) * sin(q1) * q1p;
 
 % Derivative of Row 2 (Yp terms)
 Jp(2,1) = Rp * cos(q1) - R * sin(q1) * q1p;
 Jp(2,2) = cos(alpha) * cos(q1) * q1p;
 Jp(2,3) = term1_3 * sin(q1) + base1_3 * cos(q1) * q1p;
-Jp(2,4) = -L4 * cos(phi) * phip * sin(q1) + L4 * sin(phi) * cos(q1) * q1p;
+Jp(2,4) = -L4 * cos(phi) * phip * sin(q1) - L4 * sin(phi) * cos(q1) * q1p;
 
 % Derivative of Row 3 (Zp terms)
 Jp(3,1) = 0;
