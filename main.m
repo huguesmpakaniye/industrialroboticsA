@@ -145,3 +145,55 @@ for j = 1:4
     subplot(4,3,3*j);   plot(T, Qpp(j,:)); grid on;               if j==1, title('acceleration'); end
 end
 xlabel('t [s]');
+
+%% 9. DYNAMIC ANALYSIS (Inverse Dynamics) ----------------------------------
+% Mass properties (from SolidWorks data)
+Masses.m1 = 4.50;  % Base [kg]
+Masses.m2 = 2.10;  % Prismatic link [kg]
+Masses.m3 = 1.80;  % Elbow [kg]
+Masses.m4 = 0.75;  % Wrist + tool [kg]
+
+% Initialize motor efforts array
+Fq_history = zeros(4, M);
+
+for k = 1:M
+    Fq_history(:, k) = InverseDynamics(Q(:,k), Qp(:,k), Qpp(:,k), L_dim, alpha, Masses);
+end
+
+% --- Check maximum efforts (Motor Sizing) ---
+max_efforts = max(abs(Fq_history), [], 2);
+fprintf('\n--- DYNAMIC RESULTS (Motor Sizing) ---\n');
+fprintf('Max Tau 1 (Base)        : %.2f Nm\n', max_efforts(1));
+fprintf('Max Force 2 (Prismatic) : %.2f N\n', max_efforts(2));
+fprintf('Max Tau 3 (Elbow)       : %.2f Nm\n', max_efforts(3));
+fprintf('Max Tau 4 (Wrist)       : %.2f Nm\n', max_efforts(4));
+
+% --- Plot on a single figure with separate subplots ---
+figure(3); clf;
+set(gcf, 'Color', 'w');
+
+% Motor 1: Base Rotation (Torque)
+subplot(4, 1, 1);
+plot(T, Fq_history(1,:), 'r', 'LineWidth', 1.5);
+grid on;
+ylabel('\tau_1 [Nm]');
+title('Dynamic Motor Efforts Along the Trajectory');
+
+% Motor 2: Prismatic Translation (Force)
+subplot(4, 1, 2);
+plot(T, Fq_history(2,:), 'b', 'LineWidth', 1.5);
+grid on;
+ylabel('F_2 [N]');
+
+% Motor 3: Elbow Rotation (Torque)
+subplot(4, 1, 3);
+plot(T, Fq_history(3,:), 'g', 'LineWidth', 1.5);
+grid on;
+ylabel('\tau_3 [Nm]');
+
+% Motor 4: Wrist Rotation (Torque)
+subplot(4, 1, 4);
+plot(T, Fq_history(4,:), 'y', 'LineWidth', 1.5);
+grid on;
+ylabel('\tau_4 [Nm]');
+xlabel('Time [s]');
