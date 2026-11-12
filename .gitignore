@@ -3,15 +3,21 @@
    *.m~
    *.autosave
 
-   # Compiled MEX files
-   *.mex*
-
-   # Simulink cache and generated code
+     # Simulink cache and generated code
    slprj/
    *.slxc
    *_grt_rtw/
    *.slx.r*
    *.mdl.r*
 
-   # Data and output you don't want in the repo
+   # Modern Simulink package directories and cache artifacts
+   slprj/
+   codegen/
+   resources/
+   fhprj/
+   /*.slxc
+   
+   # Compiled binaries and simulation data outputs
+   *.mex*
    *.mat
+   *.log
