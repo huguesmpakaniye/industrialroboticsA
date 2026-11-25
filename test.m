@@ -10,14 +10,14 @@ clear; clc; close all;
 cd(fileparts(mfilename('fullpath')));   % work from the repo folder (CAD/ paths of the Simscape model)
 
 %% 0. SURFACE AND ROBOT --------------------------------------------------
-R0 = 0.85;  Amp = 0.034;  Hs = 0.85;  kr = 2.5;           % A/R0 = 0.04, H/R0 = 1.0
-alpha = pi/6;                                             % prismatic axis inclination
-L1 = 0.29162 - 0.05103*sin(alpha);                        % height where the prismatic axis meets the q1 axis
-L3 = 0.306;  L4 = 0.11928 + 0.10853/pi;                   % [ASSUMPTION] L4 includes the pen
+R0 = 0.72;  Amp = 0.04*R0;  Hs = R0;  kr = 2.5;          % A/R0 = 0.04, H/R0 = 1.0
+alpha = pi/6;                                            % [ASSUMPTION] check the Rigid Transform of the plates
+L1 = 0.320 + 0.055;                                      % part1 height + Part2 trunnion pins
+L3 = 0.245;                                              % Part5: 259.4 - 14.4 mm
+L4 = 0.180;                                              % Part6: wrist axis -> end face
 L_dim = [L1 L3 L4];
-q2min = 0.28 + 0.05103 + 0.2275 - 0.14;                   % prismatic folded   [m]
-q2max = 0.28 + 0.05103 + 0.2275;                          % prismatic extended [m]
-zc = 0.50;  zb = zc - Hs/2;  th0 = 0;                     % letter centre 0.50 m, surface 0.075 -> 0.925 m
+q2min = 0.1125 + 0.1775;  q2max = 0.2525 + 0.1775;       % 0.290 .. 0.430 m
+zc = 0.60;  zb = zc - Hs/2;  th0 = 0;                    % letter centre 0.60 m, surface 0.24 -> 0.96 m
 rS   = @(z) R0 + Amp*sin(2*pi*kr*(z - zb)/Hs);            % surface radius r(z)
 drS  = @(z) Amp*2*pi*kr/Hs*cos(2*pi*kr*(z - zb)/Hs);      % r'(z)
 phiS = @(z) -atan(drS(z));                                % tool pitch = surface normal
@@ -207,8 +207,8 @@ fprintf('\n--- PREPARING SIMSCAPE SIMULATION ---\n');
 %           q2 (IK) = TOTAL length from the axis intersection to the elbow (0.42 .. 0.56 m),
 %           p  (Simscape) = slider DISPLACEMENT from its assembled pose (0 .. 0.14 m)
 %   Q_sgn : -1 if a Simscape joint moves the wrong way
-Q_off = [0; q2min; 0; 0];      % [ASSUMPTION] slider assembled FOLDED in Simscape (use q2max if assembled extended)
-Q_sgn = [1; 1; 1; 1];          % [ASSUMPTION]
+Q_off = [pi/2; q2min; 0; 0];   % q1: the arm faces +y in Simscape when its joint is at 0
+Q_sgn = [1; 1; -1; 1];         % q3 turns the other way in Simscape; q4 to check after fix 3
 Q_sim = (Q - Q_off).*Q_sgn;
 fprintf('Simscape prismatic input p = %.3f .. %.3f m  (rail: 0 .. %.2f m)\n', ...
         min(Q_sim(2,:)), max(Q_sim(2,:)), q2max - q2min);
@@ -303,3 +303,15 @@ else,                    t = out.tout; d = squeeze(s); end
 if size(d,1) ~= numel(t), d = d.'; end
 [t, iu] = unique(t);  d = d(iu,:);                       % interp1 needs distinct times
 end
+%% DIAGNOSTIC: best rigid motion Simscape -> Matlab
+A = tip.';  B = tipSi;                       % M x 3 each
+mA = mean(A);  mB = mean(B);
+[U, ~, V] = svd((B - mB).'*(A - mA));
+Rfit = V*diag([1 1 sign(det(V*U.'))])*U.';   % rotation Simscape -> Matlab
+tfit = mA.' - Rfit*mB.';
+res  = vecnorm(Rfit*B.' + tfit - A.', 2, 1);
+fprintf('\nRotation Simscape -> Matlab:\n');  disp(round(Rfit, 3));
+fprintf('Rotation angle: %.1f deg\n', acosd((trace(Rfit) - 1)/2));
+fprintf('Translation: [%.3f %.3f %.3f] m\n', tfit);
+fprintf('Residual after best fit: max %.1f mm, rms %.1f mm\n', 1e3*max(res), 1e3*rms(res));
+fprintf('Start point  Matlab [%.3f %.3f %.3f]   Simscape [%.3f %.3f %.3f]\n', A(1,:), B(1,:));
