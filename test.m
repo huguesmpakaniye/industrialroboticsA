@@ -303,15 +303,3 @@ else,                    t = out.tout; d = squeeze(s); end
 if size(d,1) ~= numel(t), d = d.'; end
 [t, iu] = unique(t);  d = d(iu,:);                       % interp1 needs distinct times
 end
-%% DIAGNOSTIC: best rigid motion Simscape -> Matlab
-A = tip.';  B = tipSi;                       % M x 3 each
-mA = mean(A);  mB = mean(B);
-[U, ~, V] = svd((B - mB).'*(A - mA));
-Rfit = V*diag([1 1 sign(det(V*U.'))])*U.';   % rotation Simscape -> Matlab
-tfit = mA.' - Rfit*mB.';
-res  = vecnorm(Rfit*B.' + tfit - A.', 2, 1);
-fprintf('\nRotation Simscape -> Matlab:\n');  disp(round(Rfit, 3));
-fprintf('Rotation angle: %.1f deg\n', acosd((trace(Rfit) - 1)/2));
-fprintf('Translation: [%.3f %.3f %.3f] m\n', tfit);
-fprintf('Residual after best fit: max %.1f mm, rms %.1f mm\n', 1e3*max(res), 1e3*rms(res));
-fprintf('Start point  Matlab [%.3f %.3f %.3f]   Simscape [%.3f %.3f %.3f]\n', A(1,:), B(1,:));
