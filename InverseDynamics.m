@@ -1,88 +1,80 @@
 function Fq = InverseDynamics(Q, Qp, Qpp, L_dim, alpha, Masses)
-% InverseDynamics: Computes required motor torques/forces Fq
-% using the Extended Jacobian method from Prof. Giberti's course.
+% InverseDynamics: motor efforts Fq = [tau1; F2; tau3; tau4] with the extended Jacobian
+% method of Prof. Giberti's course:
+%     Fq = (Je'*M*Je)*Qpp + (Je'*M*Je_dot)*Qp - Je'*Fse
+% Point masses placed at the REAL centres of mass of the CAD parts (STEP files),
+% i.e. at the same places as in the Simscape model:
+%   body 1 (q1): Part2 on the q1 axis + the 2 plates Part3
+%                (123.5 mm along the prismatic axis from the pivot, +-135 mm aside)
+%   body 2 (q2): Part4 on the prismatic axis, 126.2 mm BEFORE the elbow (moves with the whole q2)
+%                + motor/reducer of q3 on the elbow axis            (Masses.mot3, optional)
+%   body 3 (q3): Part5 on L3, 88.8 mm from the elbow
+%                + motor/reducer of q4 at mid L3                    (Masses.mot4, optional)
+%   body 4 (q4): Part6 on the tool axis, 47.2 mm from the wrist
+% Masses.m1..m4 = masses of the 4 bodies (without motors), [kg]
 
-q1 = Q(1); q2 = Q(2); q3 = Q(3); q4 = Q(4);
+% --- 1. CENTRES OF GRAVITY FROM THE CAD -----------------------------------------
+d1u = 0.1235;                          % plates CoG along the prismatic axis from the pivot [m]
+d1l = 0.135;                           % plates CoG lateral offset (each side) [m]
+k1  = 2*2.174/(12.915 + 2*2.174);      % mass fraction of the 2 plates in body 1 (CAD volumes)
+d2  = -0.1262;                         % Part4 CoG from the elbow, along the prismatic axis [m]
+d3  = 0.0888;                          % Part5 CoG from the elbow, along L3 [m]
+dm4 = L_dim(2)/2;                      % motor of q4 at mid L3 [m] (as in Simscape)
+d4  = 0.0472;                          % Part6 CoG from the wrist, along L4 [m]
 
-% --- 1. CENTERS OF GRAVITY KINEMATICS ---
-% Distances to the CoG for each link (Replace with actual CAD values)
-dg1 = L_dim(1)/2;  % CoG of link 1 (base)
-dg2 = q2/2;        % CoG of link 2 (prismatic)
-dg3 = L_dim(2)/2;  % CoG of link 3 (elbow)
-dg4 = L_dim(3)/2;  % CoG of link 4 (wrist)
+mot3 = 0;  mot4 = 0;
+if isfield(Masses, 'mot3'), mot3 = Masses.mot3; end
+if isfield(Masses, 'mot4'), mot4 = Masses.mot4; end
+mPl = k1*Masses.m1/2;                  % each plate
+mP2 = (1 - k1)*Masses.m1;              % Part2 (on the q1 axis)
+m   = [mP2, mPl, mPl, Masses.m2, mot3, Masses.m3, mot4, Masses.m4];   % 8 point masses
 
-% Anonymous function to compute the extended position vector Se(Q)
-% Se contains [x; y; z] for the 4 centers of gravity (12x1 vector)[cite: 6]
-calc_Se = @(q) [
-    % Link 1 (Base - rotates around Z)
-    dg1 * cos(q(1)); 
-    dg1 * sin(q(1)); 
-    L_dim(1)/2;
+% extended position vector Se(Q): [x; y; z] of every point mass (24 x 1)
+calc_Se = @(q) pointsPos(q, L_dim(1), L_dim(2), alpha, d1u, d1l, d2, d3, dm4, d4);
 
-    % Link 2 (Prismatic - translates along alpha)
-    (q(2)/2) * cos(alpha) * cos(q(1));
-    (q(2)/2) * cos(alpha) * sin(q(1));
-    L_dim(1) + (q(2)/2) * sin(alpha);
+% --- 2. EXTENDED JACOBIAN Je = dSe/dQ AND Je_dot (numerical, central differences) ---
+Je     = jacNum(calc_Se, Q, 1e-6);
+h      = 1e-5;                         % Je_dot*Qp = derivative of Je along Qp
+Je_dot = (jacNum(calc_Se, Q + Qp*h, 1e-6) - jacNum(calc_Se, Q - Qp*h, 1e-6))/(2*h);
 
-    % Link 3 (Elbow)
-    (q(2)*cos(alpha) + dg3*cos(alpha+q(3))) * cos(q(1));
-    (q(2)*cos(alpha) + dg3*cos(alpha+q(3))) * sin(q(1));
-    L_dim(1) + q(2)*sin(alpha) + dg3*sin(alpha+q(3));
+% --- 3. MASS MATRIX AND GRAVITY --------------------------------------------------
+g   = 9.81;
+M   = diag(kron(m, [1 1 1]));          % [m1 m1 m1 m2 m2 m2 ...]
+Fse = zeros(3*numel(m), 1);
+Fse(3:3:end) = -m*g;                   % gravity on the z components
 
-    % Link 4 (Wrist)
-    (q(2)*cos(alpha) + L_dim(2)*cos(alpha+q(3)) + dg4*cos(alpha+q(3)+q(4))) * cos(q(1));
-    (q(2)*cos(alpha) + L_dim(2)*cos(alpha+q(3)) + dg4*cos(alpha+q(3)+q(4))) * sin(q(1));
-    L_dim(1) + q(2)*sin(alpha) + L_dim(2)*sin(alpha+q(3)) + dg4*sin(alpha+q(3)+q(4))
-    ];
-
-% --- 2. EXTENDED JACOBIAN (Je) AND ITS DERIVATIVE (Je_dot) ---
-% Numerical differentiation for Je = d(Se)/dQ[cite: 7]
-delta = 1e-6;
-Je = zeros(12, 4);
-Je_dot = zeros(12, 4);
-Se_current = calc_Se(Q);
-
-for i = 1:4
-    Q_plus = Q; Q_plus(i) = Q_plus(i) + delta;
-    Je(:, i) = (calc_Se(Q_plus) - Se_current) / delta;
-
-    % For Je_dot, we differentiate Se_dot = Je * Qp
-    Qp_plus = Qp; Qp_plus(i) = Qp_plus(i) + delta;
-    % (Simplified numerical approximation of the convective term)
+% --- 4. INVERSE DYNAMICS -----------------------------------------------------------
+Fq = (Je'*M*Je)*Qpp + (Je'*M*Je_dot)*Qp - Je'*Fse;
 end
 
-% Analytical Je_dot calculation via finite difference over time step
-% requires state history, so we use the symbolic equivalent or a direct mapping.
-% To keep it purely algebraic for this instantaneous function:
-% We construct the convective acceleration vector: J_dot * Q_dot
-% V(Q, Qp) = (Je^T * M * Je_dot) * Qp[cite: 10]
-% Numerically, J_dot*Qp is the directional derivative of J along Qp:
-Q_next = Q + Qp * delta;
-Je_next = zeros(12, 4);
-for i = 1:4
-    Q_temp = Q_next; Q_temp(i) = Q_temp(i) + delta;
-    Je_next(:, i) = (calc_Se(Q_temp) - calc_Se(Q_next)) / delta;
+function Se = pointsPos(q, L1, L3, a, d1u, d1l, d2, d3, dm4, d4)
+% [x; y; z] of the 8 point masses. In the arm plane: (radial, z); lateral = across the plane
+u  = [cos(a); sin(a)];                         % prismatic axis
+e3 = [cos(a + q(3)); sin(a + q(3))];           % L3 direction
+e4 = [cos(a + q(3) + q(4)); sin(a + q(3) + q(4))];   % tool direction
+P0 = [0; L1];                                  % pivot = axes intersection
+E  = P0 + q(2)*u;                              % elbow
+W  = E + L3*e3;                                % wrist
+Pp = P0 + d1u*u;                               % plates CoG (in plane)
+pts = [ 0,     0,    0;                        % Part2 (on the q1 axis, height irrelevant)
+    Pp(1), +d1l, Pp(2);                    % plate 1
+    Pp(1), -d1l, Pp(2);                    % plate 2
+    [E + d2*u;   0].' * [1 0 0; 0 0 1; 0 1 0];    % Part4
+    [E;          0].' * [1 0 0; 0 0 1; 0 1 0];    % motor q3
+    [E + d3*e3;  0].' * [1 0 0; 0 0 1; 0 1 0];    % Part5
+    [E + dm4*e3; 0].' * [1 0 0; 0 0 1; 0 1 0];    % motor q4
+    [W + d4*e4;  0].' * [1 0 0; 0 0 1; 0 1 0] ];  % Part6
+c1 = cos(q(1));  s1 = sin(q(1));
+x  = pts(:,1)*c1 - pts(:,2)*s1;                % rotation q1 about z
+y  = pts(:,1)*s1 + pts(:,2)*c1;
+Se = reshape([x, y, pts(:,3)].', [], 1);
 end
-Je_dot = (Je_next - Je) / delta;
 
-% --- 3. MASS MATRIX & EXTERNAL FORCES ---
-% Diagonal mass matrix for X, Y, Z of each CoG[cite: 8]
-m1 = Masses.m1; m2 = Masses.m2; m3 = Masses.m3; m4 = Masses.m4;
-M_matrix = diag([m1, m1, m1, m2, m2, m2, m3, m3, m3, m4, m4, m4]);
-
-% Gravity vector Fse (acting on -Z)[cite: 18]
-g = 9.81;
-Fse = zeros(12, 1);
-Fse(3)  = -m1 * g;
-Fse(6)  = -m2 * g;
-Fse(9)  = -m3 * g;
-Fse(12) = -m4 * g;
-
-% --- 4. INVERSE DYNAMICS EQUATION ---
-% Fq = (Je^T * M * Je)*Qpp + (Je^T * M * Je_dot)*Qp - Je^T * Fse[cite: 9]
-Term_Inertia   = (Je' * M_matrix * Je) * Qpp;
-Term_Coriolis  = (Je' * M_matrix * Je_dot) * Qp;
-Term_Gravity   = Je' * Fse;
-
-Fq = Term_Inertia + Term_Coriolis - Term_Gravity;
+function J = jacNum(f, q, d)
+% central-difference Jacobian of f at q
+f0 = f(q);  J = zeros(numel(f0), numel(q));
+for i = 1:numel(q)
+    e = zeros(size(q));  e(i) = d;
+    J(:,i) = (f(q + e) - f(q - e))/(2*d);
+end
 end
